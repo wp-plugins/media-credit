@@ -11,3 +11,7 @@
 .media-credit-container {
 	text-align: center;
 }
+.media-credit-end {
+	clear: both;
+}
+

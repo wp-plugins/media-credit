@@ -1,19 +1,12 @@
-function mediaCreditAutocomplete(id, currAuthorId, currAuthor) {
+function mediaCreditAutocomplete(id, currAuthor) {
 	var PLUGIN_DIR = "../wp-content/plugins/media-credit/"; //TODO: better way to do this?
 	var inputField = "input.[id='attachments[" + id + "][media-credit]']"
 	
 	jQuery(inputField)
 		.click(function() {
-			this.select();
 			if (this.value == currAuthor) {
 				this.value = "";
 				removeID(id);
-			}
-		})
-		.blur(function() {
-			if (this.value == "") {
-				this.value = currAuthor;
-				addID(id, currAuthorId);
 			}
 		})
 		.autocomplete({
@@ -26,6 +19,7 @@ function mediaCreditAutocomplete(id, currAuthorId, currAuthor) {
 }
 
 function addID(id, author) {
+//	jQuery("<input/>").attr("name", "media-credit-" + id).attr("value", author).attr("type", "hidden").appendTo("input.[id='attachments[" + id + "][media-credit]']");
 	jQuery("#media-credit-" + id).attr("value", author);
 }
 

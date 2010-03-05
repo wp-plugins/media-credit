@@ -124,10 +124,8 @@ function add_media_credit($fields, $post) {
 	$credit = get_media_credit($post);
 	// add requirement for jquery ui core, jquery ui widgets, jquery ui position
 	$html = "<input id='attachments[$post->ID][media-credit]' class='media-credit-input' size='30' value='$credit' name='free-form' />";
-	$author = ( get_freeform_media_credit($post) == '' ) ? $post->post_author : '';
-	$author_display = get_media_credit($post);
-	$html .= "<input name='media-credit-$post->ID' id='media-credit-$post->ID' type='hidden' value='$author' />";
-	$html .= "<script type='text/javascript'>jQuery(document).ready(function() {mediaCreditAutocomplete($post->ID, " . (($author == '') ? -1 : $author) . ", '$author_display');});</script>";
+	$html .= "<input name='media-credit-$post->ID' id='media-credit-$post->ID' type='hidden' value='$post->post_author'/>";
+	$html .= "<script type='text/javascript'>jQuery(document).ready(function() {mediaCreditAutocomplete($post->ID, '" . get_wpuser_media_credit($post) . "');});</script>";
 	$fields['media-credit'] = array(
 		'label' => __('Credit:'),
 		'input' => 'html',
@@ -171,6 +169,12 @@ function send_media_credit_to_editor_by_shortcode($html, $attachment_id, $captio
 	if ( empty($align) )
 		$align = 'none';
 	
+	/*
+	$includes_link = strpos($html, '<a') !== false;
+	$pattern = $includes_link ? '/(<a.+<\/a>)/' : '/(<img.+\/>)/';
+	$replacement = '[media-credit ' . $credit . ']' . '${1}[/media-credit]';
+	$html = preg_replace($pattern, $replacement, $html);
+	*/
 	$shcode = '[media-credit ' . $credit . ' align="align' . $align . '" width="' . $width . '"]' . $html . '[/media-credit]';
 	
 	return apply_filters( 'media_add_credit_shortcode', $shcode, $html );
@@ -235,17 +239,30 @@ function add_media_credits_to_end( $content ) {
 	}
 	
 	return $content . '<div class="media-credit-end">' . $image_credit . '</div>';
+	
+	/*
+	$count = 0;	
+	foreach ( $images as $attachment_id ) {
+		if ( $count > 0 ) {
+			if ( $count < count($images) - 1 )
+				$image_credit .= ', ';
+			else
+				$image_credit .= __(' and ');
+		}
+		$image_credit .= get_media_credit_html($attachment_id);
+		$count++;
+	}
+	$content = $content . '<div class="media-credit-end">' . $image_credit . '</div>';
+	
+	return $content;
+	*/
 }
 $options = get_option( MEDIA_CREDIT_OPTION );
 if ( $options['credit_at_end'] )
 	add_filter( 'the_content', 'add_media_credits_to_end', 10, 1 );
 
 function media_credit_stylesheet() {
-	$options = get_option( MEDIA_CREDIT_OPTION );
-	if ( $options['credit_at_end'] ) // Do not display inline media credit if media credit is displayed at end of posts.
-		wp_enqueue_style( 'media-credit', MEDIA_CREDIT_URL . 'css/media-credit-end.css', array(), 1.0, 'all');
-	else
-		wp_enqueue_style( 'media-credit', MEDIA_CREDIT_URL . 'css/media-credit.css', array(), 1.0, 'all');
+	wp_enqueue_style( 'media-credit', MEDIA_CREDIT_URL . 'css/media-credit.css', array(), 1.0, 'all');
 }
 add_action('wp_print_styles', 'media_credit_stylesheet');
 
@@ -325,6 +342,84 @@ function media_credit_options_validate($input) {
 		$input[$key] = wp_filter_nohtml_kses($value);
 	}
 	return $input;
+}
+
+
+//-------- Stuff no longer used --------//
+
+/**
+ * Add media credit information to media before sending to editor
+ */
+function send_media_credit_to_editor($html, $attachment_id, $attachment) {
+	$includes_link = strpos($html, '<a') !== false;
+	$pattern = $includes_link ? '/(<a.+<\/a>)/' : '/(<img.+\/>)/';
+	$replacement = '${1}' . '<span class="media-credit">' . get_media_credit_html( $attachment_id ) . '</span>';
+	$html = preg_replace($pattern, $replacement, $html);
+	return $html;
+}
+//add_filter('image_send_to_editor', 'send_media_credit_to_editor', 10, 3);
+
+function add_credit_to_caption_shortcode($shcode, $html) {
+	if (preg_match('/' . WP_ATTACHMENT_CLASS_NAME_PREFIX . '(\d)/', $shcode, $matches)) {
+		$attachment_id = $matches[1];
+		$post = get_post($attachment_id);
+		$author_id = $post->post_author;
+		$shcode = preg_replace('/"]/','" credit="' . $author_id . '"]', $shcode);
+	}
+	return $shcode;
+}
+//add_filter('image_add_caption_shortcode','add_credit_to_caption_shortcode', 10, 2);
+
+/**
+ * The Caption shortcode.
+ *
+ * Allows a plugin to replace the content that would otherwise be returned. The
+ * filter is 'img_caption_shortcode' and passes an empty string, the attr
+ * parameter and the content parameter values.
+ *
+ * The supported attributes for the shortcode are 'id', 'align', 'width', and
+ * 'caption'.
+ *
+ * @since 2.6.0
+ *
+ * @param array $attr Attributes attributed to the shortcode.
+ * @param string $content Optional. Shortcode content.
+ * @return string
+ */
+function img_caption_shortcode_with_credit($attr, $content = null) {
+
+	// Allow plugins/themes to override the default caption template.
+	$output = apply_filters('img_caption_shortcode_with_credit', '', $attr, $content);
+	if ( $output != '' )
+		return $output;
+
+	extract(shortcode_atts(array(
+		'id'	=> '',
+		'align'	=> 'alignnone',
+		'width'	=> '',
+		'caption' => ''
+	), $attr));
+
+	if ( 1 > (int) $width || empty($caption) )
+		return $content;
+
+	if ( $id ) { // $id is the attachment id name (for CSS), normally 'attachment_XX' where XX is the ID of the attachment
+		$author_link = get_author_link_by_attachment($id);
+		$id = 'id="' . esc_attr($id) . '" ';
+	}
+
+	return '<div ' . $id . 'class="wp-caption ' . esc_attr($align) . '" style="width: ' . (10 + (int) $width) . 'px">'
+	. do_shortcode( $content ) . '<span class="media-credit">' . $author_link . '</span><p class="wp-caption-text">' . $caption . '</p></div>';
+}
+//add_shortcode('wp_caption', 'img_caption_shortcode_with_credit');
+//add_shortcode('caption', 'img_caption_shortcode_with_credit');
+
+function get_author_link_by_attachment($id) {
+	if ( preg_match( '/' . WP_ATTACHMENT_CLASS_NAME_PREFIX . '(\d+)/', $id, $matches ) ) { // Get the media creator from the attachment_ID
+		$attachment_id = $matches[1];
+		return get_media_credit_html($attachment_id);
+	}
+	return '';
 }
 
 ?>
